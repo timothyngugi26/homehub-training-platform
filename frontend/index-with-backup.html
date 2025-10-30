@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeTrain - Learn to Code</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <i class="fas fa-laptop-code"></i>
+                <h1>CodeTrain</h1>
+            </div>
+            <div class="user-controls">
+                <button class="btn btn-primary" id="login-btn">
+                    <i class="fas fa-sign-in-alt"></i> Login
+                </button>
+                <button class="btn btn-secondary" id="register-btn">
+                    <i class="fas fa-user-plus"></i> Register
+                </button>
+                <div id="user-info" style="display: none;">
+                    <span id="username-display"></span>
+                    <!-- ADD ONCLICK DIRECTLY TO THE BUTTON -->
+                    <button class="btn btn-success" id="start-training-btn" onclick="window.location.href='/learning-platform.html'">
+                        <i class="fas fa-play"></i> Start Training
+                    </button>
+                    <button class="btn btn-danger" id="logout-btn">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
+            </div>
+        </header>
+        
+        <div class="auth-forms" id="auth-forms">
+            <div class="form-container active-form" id="login-form">
+                <div class="form-header">
+                    <h2>Welcome Back!</h2>
+                    <p>Sign in to continue your coding journey</p>
+                </div>
+                <div class="form-group">
+                    <label for="login-username">Username</label>
+                    <input type="text" id="login-username" class="form-control" placeholder="Enter your username">
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" class="form-control" placeholder="Enter your password">
+                </div>
+                <button class="btn btn-primary btn-full" id="do-login">
+                    <i class="fas fa-sign-in-alt"></i> Sign In
+                </button>
+                <p class="form-switch">
+                    Don't have an account? <a href="#" id="show-register">Create one here</a>
+                </p>
+            </div>
+            
+            <div class="form-container" id="register-form">
+                <div class="form-header">
+                    <h2>Join CodeTrain</h2>
+                    <p>Start your programming journey today</p>
+                </div>
+                <div class="form-group">
+                    <label for="register-username">Username</label>
+                    <input type="text" id="register-username" class="form-control" placeholder="Choose a username">
+                </div>
+                <div class="form-group">
+                    <label for="register-email">Email</label>
+                    <input type="email" id="register-email" class="form-control" placeholder="Enter your email">
+                </div>
+                <div class="form-group">
+                    <label for="register-password">Password</label>
+                    <input type="password" id="register-password" class="form-control" placeholder="Create a password (min. 6 characters)">
+                </div>
+                <div class="form-group">
+                    <label for="register-confirm">Confirm Password</label>
+                    <input type="password" id="register-confirm" class="form-control" placeholder="Confirm your password">
+                </div>
+                <button class="btn btn-secondary btn-full" id="do-register">
+                    <i class="fas fa-user-plus"></i> Create Account
+                </button>
+                <p class="form-switch">
+                    Already have an account? <a href="#" id="show-login">Sign in here</a>
+                </p>
+            </div>
+        </div>
+        
+        <div class="main-content" id="main-content" style="display: none;">
+            <div class="welcome-section">
+                <h2>Welcome to CodeTrain! 🚂</h2>
+                <p>You're successfully logged in. Ready to start learning?</p>
+                
+                <div style="text-align: center; margin-top: 40px; padding: 30px; background: #f8f9fa; border-radius: 15px;">
+                    <h3>Access Your Learning Platform</h3>
+                    <p>Click the button below to start your Python journey:</p>
+                    <a href="/learning-platform.html" class="btn btn-success" style="font-size: 1.3rem; padding: 15px 40px; margin: 20px;">
+                        <i class="fas fa-rocket"></i> Launch Learning Platform
+                    </a>
+                    <p style="margin-top: 15px; color: #666;">
+                        Or use the "Start Training" button in the header
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app-final.js"></script>
+</body>
+</html>

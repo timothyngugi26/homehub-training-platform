@@ -1,0 +1,18 @@
+{
+  "name": "student-training-platform",
+  "version": "1.0.0",
+  "description": "Interactive coding platform for students",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node backend/server.js",
+    "setup": "echo 'Setup complete'"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express-session": "^1.17.3"
+  }
+}

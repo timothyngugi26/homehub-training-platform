@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeTrain - Learning Platform</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .learning-interface {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            grid-template-rows: 1fr 400px;
+            gap: 20px;
+            height: 85vh;
+            margin-top: 20px;
+        }
+
+        .modules-sidebar {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            grid-row: 1 / -1;
+            overflow-y: auto;
+        }
+
+        .learning-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+        }
+
+        .practice-area {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .module-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+
+        .module-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+
+        .module-item.active {
+            background: #4361ee;
+            color: white;
+            border-left-color: #3a0ca3;
+        }
+
+        .module-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .module-meta {
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+
+        .practice-tabs {
+            display: flex;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 15px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn.active {
+            background: #4361ee;
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+            height: 100%;
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .terminal-container, .editor-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .terminal-header, .editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: #2d2d2d;
+            color: white;
+            border-radius: 10px 10px 0 0;
+        }
+
+        .terminal {
+            flex: 1;
+            background: #1e1e1e;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            padding: 15px;
+            overflow-y: auto;
+            border-radius: 0 0 10px 10px;
+        }
+
+        .code-editor {
+            flex: 1;
+            background: #1e1e1e;
+            color: #f8f8f2;
+            border: none;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            resize: none;
+            outline: none;
+        }
+
+        .editor-output {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-top: 2px solid #444;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .btn-small {
+            padding: 8px 15px;
+            font-size: 14px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-success {
+            background: #4bb543;
+            color: white;
+        }
+
+        .concept-card {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .code-example {
+            background: #1e1e1e;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+        }
+
+        .story-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            border-left: 4px solid #4361ee;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <i class="fas fa-laptop-code"></i>
+                <h1>CodeTrain - Learning Platform</h1>
+            </div>
+            <div class="user-controls">
+                <span id="username-display"></span>
+                <button class="btn btn-danger" onclick="logout()">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+        </header>
+
+        <div class="learning-interface">
+            <!-- Sidebar with modules -->
+            <div class="modules-sidebar">
+                <h3>Python Learning Path</h3>
+                <div class="module-list" id="module-list">
+                    <div class="module-item active" data-module="1">
+                        <div class="module-title">1. Hello Python</div>
+                        <div class="module-meta">Beginner • 30 minutes</div>
+                    </div>
+                    <div class="module-item" data-module="2">
+                        <div class="module-title">2. Functions</div>
+                        <div class="module-meta">Beginner • 45 minutes</div>
+                    </div>
+                    <div class="module-item" data-module="3">
+                        <div class="module-title">3. Conditions & Booleans</div>
+                        <div class="module-meta">Beginner • 40 minutes</div>
+                    </div>
+                    <div class="module-item" data-module="4">
+                        <div class="module-title">4. Lists & Loops</div>
+                        <div class="module-meta">Beginner • 50 minutes</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main content area -->
+            <div class="learning-content">
+                <div id="module-display">
+                    <div class="module-header">
+                        <h2>Hello Python - Talking to the Computer</h2>
+                        <div class="module-meta">
+                            <span class="difficulty">Beginner</span> • 
+                            <span class="time">30 minutes</span>
+                        </div>
+                    </div>
+                    
+                    <div class="story-section">
+                        <h3>📖 The Story</h3>
+                        <p>Welcome to Python! Think of Python as teaching a robot to follow your instructions.</p>
+                        <p>When you type commands, your robot listens carefully and does exactly what you say.</p>
+                        <p>Let's start with the most important command - making your robot speak!</p>
+                    </div>
+                    
+                    <div class="concept-card">
+                        <h4>Print Function - Making the Robot Speak</h4>
+                        <p>The <code>print()</code> function is how your Python robot speaks to you. Whatever you put inside the parentheses, your robot will say out loud!</p>
+                        
+                        <div class="code-example">
+# Try these in the terminal below:
+print("Hello, world!")
+print("I'm learning Python!")
+print(2 + 3)
+                        </div>
+                        
+                        <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin: 15px 0;">
+                            <strong>💡 Real-world analogy:</strong> Think of <code>print()</code> like telling your robot: "Say this out loud!"
+                        </div>
+                    </div>
+
+                    <div class="concept-card">
+                        <h4>Variables - Naming Your Storage Boxes</h4>
+                        <p>Variables are like labeled boxes where you can store information. Once you put something in a box, you can use the label to get it back later.</p>
+                        
+                        <div class="code-example">
+# Create variables (storage boxes)
+name = "Alex"
+age = 12
+is_student = True
+
+# Use the variables
+print("Hello, " + name)
+print("You are " + str(age) + " years old")
+                        </div>
+                    </div>
+
+                    <div class="concept-card">
+                        <h4>�� Your Mission</h4>
+                        <p>Try these exercises in the Python Terminal:</p>
+                        <ol>
+                            <li>Make the robot greet you by name</li>
+                            <li>Calculate your age in dog years (1 human year = 7 dog years)</li>
+                            <li>Create variables for your favorite color and food, then print them</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Practice area (terminal + editor) -->
+            <div class="practice-area">
+                <div class="practice-tabs">
+                    <button class="tab-btn active" data-tab="terminal">Python Terminal</button>
+                    <button class="tab-btn" data-tab="editor">Code Editor</button>
+                </div>
+                
+                <div class="tab-content active" id="terminal-tab">
+                    <div class="terminal-container">
+                        <div class="terminal-header">
+                            <span>Python Terminal - Try the examples above!</span>
+                            <button class="btn-small" onclick="clearTerminal()">Clear</button>
+                        </div>
+                        <div class="terminal" id="python-terminal">
+                            <div class="output">Welcome to Python Terminal! Type your code here.</div>
+                            <div class="output">Try: print("Hello, World!")</div>
+                            <div class="input-line">
+                                <span class="prompt">>>></span>
+                                <input type="text" class="terminal-input" id="terminal-input" placeholder="Type Python code here...">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="editor-tab">
+                    <div class="editor-container">
+                        <div class="editor-header">
+                            <span>Code Editor</span>
+                            <div class="editor-buttons">
+                                <button class="btn-small btn-success" onclick="runCode()">Run Code</button>
+                                <button class="btn-small" onclick="clearEditor()">Clear</button>
+                            </div>
+                        </div>
+                        <textarea class="code-editor" id="code-editor" placeholder="# Write your Python code here...&#10;&#10;print(&quot;Hello, Python!&quot;)&#10;name = &quot;Student&quot;&#10;print(&quot;Welcome, &quot; + name)">print("Hello, Python!")</textarea>
+                        <div class="editor-output" id="editor-output">
+                            <div class="output-header">Output:</div>
+                            <div class="output-content" id="output-content"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get current user
+        async function getCurrentUser() {
+            try {
+                const response = await fetch('/api/auth/me', { credentials: 'include' });
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('username-display').textContent = `Welcome, ${data.user.username}!`;
+                } else {
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                window.location.href = '/';
+            }
+        }
+
+        // Logout function
+        async function logout() {
+            await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+            window.location.href = '/';
+        }
+
+        // Terminal functionality
+        const terminalInput = document.getElementById('terminal-input');
+        const terminal = document.getElementById('python-terminal');
+
+        terminalInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const command = terminalInput.value.trim();
+                executePythonCommand(command);
+                terminalInput.value = '';
+            }
+        });
+
+        function executePythonCommand(command) {
+            const inputLine = terminal.querySelector('.input-line');
+            
+            // Add the command to output
+            const commandElement = document.createElement('div');
+            commandElement.className = 'output';
+            commandElement.innerHTML = `<span class="prompt">>>></span> ${command}`;
+            terminal.insertBefore(commandElement, inputLine);
+            
+            try {
+                // Simple Python command execution simulation
+                let result;
+                if (command.includes('print(')) {
+                    const content = command.match(/print\((.*)\)/);
+                    if (content) {
+                        // Remove quotes and evaluate the content
+                        let output = content[1];
+                        if (output.startsWith('"') && output.endsWith('"') || output.startsWith("'") && output.endsWith("'")) {
+                            output = output.slice(1, -1);
+                        }
+                        // Evaluate expressions
+                        try {
+                            result = eval(output);
+                        } catch {
+                            result = output;
+                        }
+                    } else {
+                        result = 'Printed something!';
+                    }
+                } else if (command.includes('=')) {
+                    // Handle variable assignment
+                    const parts = command.split('=');
+                    const varName = parts[0].trim();
+                    const value = parts[1].trim();
+                    result = `Variable ${varName} set to ${value}`;
+                } else {
+                    // Try to evaluate mathematical expressions
+                    result = eval(command);
+                }
+                
+                const resultElement = document.createElement('div');
+                resultElement.className = 'output';
+                resultElement.textContent = result;
+                terminal.insertBefore(resultElement, inputLine);
+                
+            } catch (error) {
+                const errorElement = document.createElement('div');
+                errorElement.className = 'output';
+                errorElement.style.color = '#ff5555';
+                errorElement.textContent = `Error: ${error.message}`;
+                terminal.insertBefore(errorElement, inputLine);
+            }
+            
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        // Editor functionality
+        function runCode() {
+            const code = document.getElementById('code-editor').value;
+            const output = document.getElementById('output-content');
+            output.innerHTML = '';
+            
+            // Split code into lines and execute each one
+            const lines = code.split('\n');
+            lines.forEach(line => {
+                if (line.trim() && !line.trim().startsWith('#')) {
+                    const lineElement = document.createElement('div');
+                    lineElement.className = 'output-line';
+                    
+                    try {
+                        if (line.includes('print(')) {
+                            const content = line.match(/print\((.*)\)/);
+                            if (content) {
+                                let outputText = content[1];
+                                if (outputText.startsWith('"') && outputText.endsWith('"') || outputText.startsWith("'") && outputText.endsWith("'")) {
+                                    outputText = outputText.slice(1, -1);
+                                }
+                                lineElement.textContent = outputText;
+                            }
+                        } else {
+                            const result = eval(line);
+                            lineElement.textContent = result;
+                        }
+                    } catch (error) {
+                        lineElement.style.color = '#ff5555';
+                        lineElement.textContent = `Error: ${error.message}`;
+                    }
+                    
+                    output.appendChild(lineElement);
+                }
+            });
+        }
+
+        function clearTerminal() {
+            const terminal = document.getElementById('python-terminal');
+            const inputLine = terminal.querySelector('.input-line');
+            terminal.innerHTML = '';
+            terminal.appendChild(inputLine);
+            
+            // Add welcome message back
+            const welcome1 = document.createElement('div');
+            welcome1.className = 'output';
+            welcome1.textContent = 'Welcome to Python Terminal! Type your code here.';
+            terminal.appendChild(welcome1);
+            
+            const welcome2 = document.createElement('div');
+            welcome2.className = 'output';
+            welcome2.textContent = 'Try: print("Hello, World!")';
+            terminal.appendChild(welcome2);
+            
+            terminal.appendChild(inputLine);
+        }
+
+        function clearEditor() {
+            document.getElementById('code-editor').value = '';
+            document.getElementById('output-content').innerHTML = '';
+        }
+
+        // Tab switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.tab;
+                
+                // Update tab buttons
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                // Update tab content
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+                document.getElementById(`${tab}-tab`).classList.add('active');
+            });
+        });
+
+        // Module switching
+        document.querySelectorAll('.module-item').forEach(item => {
+            item.addEventListener('click', () => {
+                document.querySelectorAll('.module-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                
+                // In a real app, you would load different module content here
+                alert(`Loading module ${item.dataset.module}...`);
+            });
+        });
+
+        // Initialize
+        getCurrentUser();
+        
+        // Focus on terminal input
+        setTimeout(() => {
+            document.getElementById('terminal-input').focus();
+        }, 100);
+    </script>
+</body>
+</html>
