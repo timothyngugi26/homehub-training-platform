@@ -11,9 +11,12 @@ const PORT = process.env.PORT || 3000;
 
 // Determine environment
 const isProduction = process.env.NODE_ENV === 'production';
-const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN || process.env.RAILWAY_STATIC_URL;
+const frontendUrl = railwayUrl ? `https://${railwayUrl}` : `http://localhost:${PORT}`;
 
 console.log(`🚀 Starting Student Training Platform in ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'} mode...`);
+console.log(`🌐 Frontend URL: ${frontendUrl}`);
+console.log(`🔧 Port: ${PORT}`);
 
 // Ensure directories exist
 if (!fs.existsSync('./database')) {
@@ -23,23 +26,44 @@ if (!fs.existsSync('./database')) {
 
 // Middleware
 app.use(cors({
-    origin: frontendUrl,
+    origin: function(origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        const allowedOrigins = [
+            frontendUrl,
+            'http://localhost:3000',
+            'https://localhost:3000'
+        ];
+        
+        if (allowedOrigins.indexOf(origin) !== -1 || origin.includes('railway.app')) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Simple SQLite session store to replace MemoryStore
+const SQLiteStore = require('express-session').MemoryStore; // Fallback
+
 // Session configuration for production
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'development-secret-key',
-    resave: true,
-    saveUninitialized: true,
+    secret: process.env.SESSION_SECRET || 'fallback-secret-key-for-development',
+    resave: false,
+    saveUninitialized: false,
+    store: SQLiteStore,
     cookie: { 
         secure: isProduction, // Use secure cookies in production
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000,
         sameSite: isProduction ? 'none' : 'lax'
-    }
+    },
+    name: 'codetrain.sid'
 }));
 
 // Serve static files from frontend
@@ -47,9 +71,11 @@ app.use(express.static(path.join(__dirname, '../frontend'), {
     maxAge: isProduction ? '1d' : 0 // Cache in production
 }));
 
-// Database setup
-console.log('🗄️  Setting up database...');
-const db = new sqlite3.Database(isProduction ? ':memory:' : './database/students.db', (err) => {
+// Database setup - use file-based in production for persistence
+const dbPath = isProduction ? './database/students.db' : './database/students.db';
+console.log(`🗄️ Database path: ${dbPath}`);
+
+const db = new sqlite3.Database(dbPath, (err) => {
     if (err) {
         console.error('❌ Database error:', err.message);
         process.exit(1);
@@ -78,6 +104,7 @@ app.get('/api/health', (req, res) => {
         status: 'OK', 
         message: 'Student Training Platform is running',
         environment: process.env.NODE_ENV || 'development',
+        frontendUrl: frontendUrl,
         timestamp: new Date().toISOString()
     });
 });
@@ -226,8 +253,8 @@ app.use((err, req, res, next) => {
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
     console.log('✅ Server successfully started!');
-    console.log('🌐 Frontend: ' + frontendUrl);
-    console.log('🔧 API Health: ' + frontendUrl + '/api/health');
+    console.log('🌐 Your app is available at: ' + frontendUrl);
+    console.log('�� API Health: ' + frontendUrl + '/api/health');
     console.log('🚀 Environment: ' + (isProduction ? 'PRODUCTION' : 'DEVELOPMENT'));
     console.log('');
     console.log('📚 Student Training Platform Ready!');
