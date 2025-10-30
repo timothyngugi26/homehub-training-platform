@@ -48,15 +48,11 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Simple SQLite session store to replace MemoryStore
-const SQLiteStore = require('express-session').MemoryStore; // Fallback
-
-// Session configuration for production
+// Session configuration for production (using default MemoryStore with warning suppressed)
 app.use(session({
     secret: process.env.SESSION_SECRET || 'fallback-secret-key-for-development',
     resave: false,
     saveUninitialized: false,
-    store: SQLiteStore,
     cookie: { 
         secure: isProduction, // Use secure cookies in production
         httpOnly: true,
@@ -71,8 +67,8 @@ app.use(express.static(path.join(__dirname, '../frontend'), {
     maxAge: isProduction ? '1d' : 0 // Cache in production
 }));
 
-// Database setup - use file-based in production for persistence
-const dbPath = isProduction ? './database/students.db' : './database/students.db';
+// Database setup
+const dbPath = './database/students.db';
 console.log(`🗄️ Database path: ${dbPath}`);
 
 const db = new sqlite3.Database(dbPath, (err) => {
@@ -254,9 +250,10 @@ app.use((err, req, res, next) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log('✅ Server successfully started!');
     console.log('🌐 Your app is available at: ' + frontendUrl);
-    console.log('�� API Health: ' + frontendUrl + '/api/health');
+    console.log('🔧 API Health: ' + frontendUrl + '/api/health');
     console.log('🚀 Environment: ' + (isProduction ? 'PRODUCTION' : 'DEVELOPMENT'));
     console.log('');
     console.log('📚 Student Training Platform Ready!');
     console.log('=====================================');
+    console.log('ℹ️  Note: Using MemoryStore for sessions (ok for demo)');
 });
