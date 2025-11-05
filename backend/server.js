@@ -32,9 +32,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Session configuration - UPDATED
 app.use(session({
-    secret: 'student-platform-secret-key-' + Math.random().toString(36).substring(2),
-    resave: true,
-    saveUninitialized: true,
+    secret: 'student-platform-secret-key-',
+    resave: false,
+    saveUninitialized: false,
     cookie: { 
         secure: false, // Set to true in production with HTTPS
         httpOnly: true,
