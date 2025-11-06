@@ -314,10 +314,6 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Serve frontend for all other routes
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/index.html'));
-});
 
 // ===== LEARNING MODULES API =====
 
@@ -585,6 +581,11 @@ app.post('/api/progress', (req, res) => {
             res.json({ message: 'Progress saved successfully' });
         }
     );
+});
+
+// Serve frontend for all other routes
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
 // Start server
