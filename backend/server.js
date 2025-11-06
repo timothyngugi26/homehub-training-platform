@@ -7,21 +7,31 @@ const bcrypt = require('bcryptjs');
 const fs = require('fs');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-console.log('🚀 Starting Student Training Platform...');
+// ===== RAILWAY-SPECIFIC FIXES =====
+const isProduction = process.env.NODE_ENV === 'production';
+const isRailway = process.env.RAILWAY === 'true' || isProduction;
+
+console.log(`🚀 Starting Student Training Platform in ${isRailway ? 'PRODUCTION' : 'DEVELOPMENT'} mode...`);
+
+// Trust Railway's proxy (CRITICAL FOR COOKIES)
+app.set('trust proxy', 1);
 
 // Ensure database directory exists
 if (!fs.existsSync('./database')) {
     fs.mkdirSync('./database', { recursive: true });
     console.log('📁 Created database directory');
 }
-// Middleware
+
+// ===== FIXED CORS CONFIGURATION =====
 app.use(cors({
-    origin: 'http://localhost:3000',
+    origin: isRailway 
+        ? ['https://homehub-training-platform-production.up.railway.app', 'http://localhost:3000']
+        : 'http://localhost:3000',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
 }));
 
 // Handle preflight requests
@@ -30,23 +40,32 @@ app.options('*', cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Session configuration - UPDATED
+// ===== FIXED SESSION CONFIGURATION FOR RAILWAY =====
 app.use(session({
-    secret: 'student-platform-secret-key-',
+    secret: process.env.SESSION_SECRET || 'student-platform-secret-key-',
     resave: false,
     saveUninitialized: false,
     cookie: { 
-        secure: false, // Set to true in production with HTTPS
+        secure: isRailway, // ✅ true on Railway, false locally
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        sameSite: 'lax'
+        sameSite: isRailway ? 'none' : 'lax', // ✅ 'none' for Railway, 'lax' locally
+        domain: isRailway ? '.railway.app' : undefined // ✅ Allow subdomains on Railway
     },
-    name: 'codetrain.sid'
+    name: 'codetrain.sid',
+    proxy: true // ✅ Trust proxy for secure cookies
 }));
-// Add this after your session middleware
+
+// ===== ENHANCED DEBUGGING MIDDLEWARE =====
 app.use((req, res, next) => {
+    console.log(`=== ${isRailway ? 'RAILWAY' : 'LOCAL'} DEBUG ===`);
     console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    console.log('Session:', req.session);
+    console.log('Origin:', req.headers.origin);
+    console.log('Host:', req.headers.host);
+    console.log('Secure:', req.secure);
+    console.log('Session ID:', req.sessionID);
+    console.log('User ID in session:', req.session.userId);
+    console.log('====================');
     next();
 });
 
@@ -55,6 +74,7 @@ app.use((err, req, res, next) => {
     console.error('❌ Server Error:', err);
     res.status(500).json({ error: 'Internal server error' });
 });
+
 // Serve static files from frontend
 app.use(express.static(path.join(__dirname, '../frontend')));
 
@@ -265,12 +285,32 @@ app.get('/api/progress', (req, res) => {
     );
 });
 
+// ===== NEW: SESSION TEST ENDPOINT =====
+app.get('/api/session-test', (req, res) => {
+    req.session.testTime = new Date().toISOString();
+    req.session.testCount = (req.session.testCount || 0) + 1;
+    
+    res.json({
+        sessionId: req.sessionID,
+        testTime: req.session.testTime,
+        testCount: req.session.testCount,
+        userId: req.session.userId,
+        environment: isRailway ? 'RAILWAY' : 'LOCAL',
+        cookieConfig: {
+            secure: isRailway,
+            sameSite: isRailway ? 'none' : 'lax'
+        }
+    });
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'OK', 
         message: 'Student Training Platform is running',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        environment: isRailway ? 'production' : 'development',
+        platform: 'Railway'
     });
 });
 
@@ -513,7 +553,6 @@ print("7 squared = " + str(square(7)))`,
                 ]
             }
         }
-        // More modules would be added here...
     ];
     
     res.json({ modules: modules });
@@ -547,17 +586,20 @@ app.post('/api/progress', (req, res) => {
         }
     );
 });
+
 // Start server
 app.listen(PORT, () => {
     console.log('✅ Server successfully started!');
-    console.log('🌐 Frontend: http://localhost:' + PORT);
-    console.log('🔧 API Health: http://localhost:' + PORT + '/api/health');
+    console.log('🌐 Frontend URL: https://homehub-training-platform-production.up.railway.app');
+    console.log('🔧 Port:', PORT);
+    console.log('🚀 Environment:', isRailway ? 'PRODUCTION' : 'DEVELOPMENT');
     console.log('');
     console.log('📚 Student Training Platform Ready!');
     console.log('=====================================');
-    console.log('You can now:');
-    console.log('1. Open http://localhost:3000 in your browser');
-    console.log('2. Register a new account');
-    console.log('3. Login and start learning!');
-    console.log('=====================================');
+    console.log('ℹ️  Note: Using MemoryStore for sessions (ok for demo)');
+    console.log('✅ Connected to SQLite database');
+    console.log('🔐 Session config:', {
+        secure: isRailway,
+        sameSite: isRailway ? 'none' : 'lax'
+    });
 });
