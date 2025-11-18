@@ -1,5 +1,7 @@
 const express = require('express');
 const session = require('express-session');
+const RedisStore = require('connect-redis').default;
+const { createClient } = require('redis');
 const cors = require('cors');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
@@ -41,8 +43,24 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ===== FIXED SESSION CONFIGURATION FOR RAILWAY =====
+let sessionStore = undefined;
+
+if (isRailway) {
+    // Use Redis in production
+    const redisClient = createClient({
+        url: process.env.REDIS_URL // Set this in Railway environment variables
+    });
+    redisClient.connect().catch(console.error);
+
+    sessionStore = new RedisStore({
+        client: redisClient,
+        prefix: "sess:"
+    });
+}
+
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'student-platform-secret-key-',
+    store: sessionStore,
+    secret: process.env.SESSION_SECRET || 'student-platform-secret-key',
     resave: false,
     saveUninitialized: false,
     cookie: { 
