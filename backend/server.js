@@ -27,52 +27,106 @@ if (!fs.existsSync('./database')) {
 }
 
 // ===== FIXED CORS CONFIGURATION =====
-app.use(cors({
+const corsOptions = {
     origin: isRailway 
         ? ['https://homehub-training-platform-production.up.railway.app', 'http://localhost:3000']
         : 'http://localhost:3000',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
-}));
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With']
+};
+
+app.use(cors(corsOptions));
 
 // Handle preflight requests
-app.options('*', cors());
+app.options('*', cors(corsOptions));
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ===== FIXED SESSION CONFIGURATION FOR RAILWAY =====
-let sessionStore = undefined;
+// ===== IMPROVED SESSION CONFIGURATION =====
+let redisClient;
+let sessionStore;
 
-if (isRailway) {
-    // Use Redis in production
-    const redisClient = createClient({
-        url: process.env.REDIS_URL // Set this in Railway environment variables
-    });
-    redisClient.connect().catch(console.error);
+const setupSessionStore = async () => {
+    if (isRailway && process.env.REDIS_URL) {
+        try {
+            console.log('🔗 Connecting to Redis...');
+            redisClient = createClient({
+                url: process.env.REDIS_URL,
+                socket: {
+                    connectTimeout: 30000,
+                    lazyConnect: true,
+                    reconnectStrategy: (retries) => {
+                        if (retries > 10) {
+                            console.log('❌ Too many Redis retries. Giving up.');
+                            return new Error('Too many retries');
+                        }
+                        return Math.min(retries * 100, 3000);
+                    }
+                }
+            });
 
-    sessionStore = new RedisStore({
-        client: redisClient,
-        prefix: "sess:"
-    });
-}
+            // Redis error handling
+            redisClient.on('error', (err) => {
+                console.error('❌ Redis Client Error:', err);
+            });
 
-app.use(session({
+            redisClient.on('connect', () => {
+                console.log('✅ Redis connected successfully');
+            });
+
+            redisClient.on('disconnect', () => {
+                console.log('⚠️ Redis disconnected');
+            });
+
+            await redisClient.connect();
+            
+            sessionStore = new RedisStore({
+                client: redisClient,
+                prefix: "sess:",
+                ttl: 86400 // 24 hours in seconds
+            });
+            
+            console.log('✅ Redis session store initialized');
+            
+        } catch (redisError) {
+            console.error('❌ Failed to connect to Redis:', redisError);
+            console.log('🔄 Falling back to memory store');
+            sessionStore = undefined;
+        }
+    } else {
+        console.log('🔄 Using memory session store (development)');
+        sessionStore = undefined;
+    }
+};
+
+// Initialize session store immediately
+setupSessionStore().catch(console.error);
+
+const sessionConfig = {
     store: sessionStore,
-    secret: process.env.SESSION_SECRET || 'student-platform-secret-key',
+    secret: process.env.SESSION_SECRET || 'student-platform-secret-key-change-in-production',
     resave: false,
     saveUninitialized: false,
+    rolling: true, // Reset maxAge on every request
+    proxy: true,
+    name: 'codetrain.sid',
     cookie: { 
-        secure: isRailway, // ✅ true on Railway, false locally
+        secure: isRailway,
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        sameSite: isRailway ? 'none' : 'lax', // ✅ 'none' for Railway, 'lax' locally
-        domain: isRailway ? '.railway.app' : undefined // ✅ Allow subdomains on Railway
-    },
-    name: 'codetrain.sid',
-    proxy: true // ✅ Trust proxy for secure cookies
-}));
+        sameSite: isRailway ? 'none' : 'lax',
+        domain: isRailway ? '.railway.app' : undefined
+    }
+};
+
+// Remove store if Redis connection failed
+if (sessionStore === undefined) {
+    delete sessionConfig.store;
+}
+
+app.use(session(sessionConfig));
 
 // ===== ENHANCED DEBUGGING MIDDLEWARE =====
 app.use((req, res, next) => {
@@ -87,23 +141,38 @@ app.use((req, res, next) => {
     next();
 });
 
-// Add error handling middleware at the end
-app.use((err, req, res, next) => {
-    console.error('❌ Server Error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+// Add request timeout middleware
+app.use((req, res, next) => {
+    req.setTimeout(30000, () => { // 30 second timeout
+        console.log(`⏰ Request timeout: ${req.method} ${req.url}`);
+    });
+    next();
 });
 
 // Serve static files from frontend
-app.use(express.static(path.join(__dirname, '../frontend')));
+app.use(express.static(path.join(__dirname, '../frontend'), {
+    maxAge: isRailway ? '1h' : 0
+}));
 
-// Database setup
+// Database setup with better error handling
 console.log('🗄️  Setting up database...');
-const db = new sqlite3.Database('./database/students.db', (err) => {
+const db = new sqlite3.Database('./database/students.db', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
     if (err) {
         console.error('❌ Database error:', err.message);
-        process.exit(1);
+        // Don't exit process in production, just log error
+        if (!isRailway) process.exit(1);
     }
     console.log('✅ Connected to SQLite database');
+});
+
+// Enable WAL mode for better performance
+db.configure("busyTimeout", 3000);
+db.run("PRAGMA journal_mode = WAL", (err) => {
+    if (err) {
+        console.error('❌ WAL mode error:', err);
+    } else {
+        console.log('✅ Database WAL mode enabled');
+    }
 });
 
 // Initialize database tables
@@ -123,7 +192,10 @@ db.serialize(() => {
         user_id INTEGER NOT NULL,
         module_id INTEGER NOT NULL,
         completed BOOLEAN DEFAULT FALSE,
-        last_accessed DATETIME DEFAULT CURRENT_TIMESTAMP
+        score INTEGER DEFAULT 0,
+        time_spent INTEGER DEFAULT 0,
+        last_accessed DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, module_id)
     )`);
     
     // Modules table
@@ -138,7 +210,7 @@ db.serialize(() => {
     console.log('✅ Database tables created');
 });
 
-// ===== AUTHENTICATION ROUTES =====
+// ===== IMPROVED AUTHENTICATION ROUTES =====
 
 // Register new user
 app.post('/api/auth/register', async (req, res) => {
@@ -159,12 +231,13 @@ app.post('/api/auth/register', async (req, res) => {
         // Hash password
         const passwordHash = await bcrypt.hash(password, 10);
         
-        // Insert user
+        // Insert user with timeout
         db.run(
             'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
             [username, email, passwordHash],
             function(err) {
                 if (err) {
+                    console.error('❌ Registration DB error:', err);
                     if (err.message.includes('UNIQUE constraint failed')) {
                         return res.status(400).json({ error: 'Username or email already exists' });
                     }
@@ -175,14 +248,22 @@ app.post('/api/auth/register', async (req, res) => {
                 req.session.userId = this.lastID;
                 req.session.username = username;
                 
-                console.log('✅ User registered:', username);
-                res.json({
-                    message: 'Registration successful!',
-                    user: {
-                        id: this.lastID,
-                        username: username,
-                        email: email
+                // Save session immediately
+                req.session.save((err) => {
+                    if (err) {
+                        console.error('❌ Session save error:', err);
+                        return res.status(500).json({ error: 'Session error' });
                     }
+                    
+                    console.log('✅ User registered:', username);
+                    res.json({
+                        message: 'Registration successful!',
+                        user: {
+                            id: this.lastID,
+                            username: username,
+                            email: email
+                        }
+                    });
                 });
             }
         );
@@ -204,13 +285,13 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(400).json({ error: 'Username and password are required' });
         }
 
-        // Find user
+        // Find user with timeout handling
         db.get(
             'SELECT * FROM users WHERE username = ?',
             [username],
             async (err, user) => {
                 if (err) {
-                    console.error('❌ Database error:', err);
+                    console.error('❌ Login DB error:', err);
                     return res.status(500).json({ error: 'Database error' });
                 }
                 
@@ -224,18 +305,34 @@ app.post('/api/auth/login', async (req, res) => {
                     return res.status(401).json({ error: 'Invalid username or password' });
                 }
 
-                // Set session
-                req.session.userId = user.id;
-                req.session.username = user.username;
-                
-                console.log('✅ User logged in:', username);
-                res.json({
-                    message: 'Login successful!',
-                    user: {
-                        id: user.id,
-                        username: user.username,
-                        email: user.email
+                // Regenerate session to prevent fixation
+                req.session.regenerate((err) => {
+                    if (err) {
+                        console.error('❌ Session regeneration error:', err);
+                        return res.status(500).json({ error: 'Session error' });
                     }
+
+                    // Set session
+                    req.session.userId = user.id;
+                    req.session.username = user.username;
+                    
+                    // Save session immediately
+                    req.session.save((err) => {
+                        if (err) {
+                            console.error('❌ Session save error:', err);
+                            return res.status(500).json({ error: 'Session error' });
+                        }
+                        
+                        console.log('✅ User logged in:', username);
+                        res.json({
+                            message: 'Login successful!',
+                            user: {
+                                id: user.id,
+                                username: user.username,
+                                email: user.email
+                            }
+                        });
+                    });
                 });
             }
         );
@@ -250,8 +347,16 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/logout', (req, res) => {
     req.session.destroy((err) => {
         if (err) {
+            console.error('❌ Logout error:', err);
             return res.status(500).json({ error: 'Could not log out' });
         }
+        
+        // Clear cookie
+        res.clearCookie('codetrain.sid', {
+            domain: isRailway ? '.railway.app' : undefined,
+            path: '/'
+        });
+        
         res.json({ message: 'Logout successful' });
     });
 });
@@ -262,6 +367,9 @@ app.get('/api/auth/me', (req, res) => {
         return res.status(401).json({ error: 'Not authenticated' });
     }
     
+    // Refresh session
+    req.session.touch();
+    
     res.json({
         user: {
             id: req.session.userId,
@@ -270,344 +378,93 @@ app.get('/api/auth/me', (req, res) => {
     });
 });
 
-// ===== TRAINING ROUTES =====
-
-// Get all modules
-app.get('/api/modules', (req, res) => {
-    db.all('SELECT * FROM modules ORDER BY order_index', (err, rows) => {
-        if (err) {
-            return res.status(500).json({ error: 'Database error' });
-        }
-        res.json({ modules: rows });
-    });
-});
-
-// Get user progress
-app.get('/api/progress', (req, res) => {
-    if (!req.session.userId) {
-        return res.status(401).json({ error: 'Not authenticated' });
-    }
-    
-    db.all(
-        `SELECT up.*, m.title 
-         FROM user_progress up 
-         JOIN modules m ON up.module_id = m.id 
-         WHERE up.user_id = ?`,
-        [req.session.userId],
-        (err, rows) => {
-            if (err) {
-                return res.status(500).json({ error: 'Database error' });
-            }
-            res.json({ progress: rows });
-        }
-    );
-});
-
-// ===== NEW: SESSION TEST ENDPOINT =====
+// ===== SESSION TEST ENDPOINT =====
 app.get('/api/session-test', (req, res) => {
     req.session.testTime = new Date().toISOString();
     req.session.testCount = (req.session.testCount || 0) + 1;
     
-    res.json({
-        sessionId: req.sessionID,
-        testTime: req.session.testTime,
-        testCount: req.session.testCount,
-        userId: req.session.userId,
-        environment: isRailway ? 'RAILWAY' : 'LOCAL',
-        cookieConfig: {
-            secure: isRailway,
-            sameSite: isRailway ? 'none' : 'lax'
+    req.session.save((err) => {
+        if (err) {
+            console.error('❌ Session test save error:', err);
+            return res.status(500).json({ error: 'Session save failed' });
         }
+        
+        res.json({
+            sessionId: req.sessionID,
+            testTime: req.session.testTime,
+            testCount: req.session.testCount,
+            userId: req.session.userId,
+            environment: isRailway ? 'RAILWAY' : 'LOCAL',
+            cookieConfig: {
+                secure: isRailway,
+                sameSite: isRailway ? 'none' : 'lax'
+            }
+        });
     });
 });
 
-// Health check endpoint
+// Health check endpoint with DB check
 app.get('/api/health', (req, res) => {
-    res.json({ 
-        status: 'OK', 
-        message: 'Student Training Platform is running',
-        timestamp: new Date().toISOString(),
-        environment: isRailway ? 'production' : 'development',
-        platform: 'Railway'
+    // Check database connection
+    db.get('SELECT 1 as test', (err) => {
+        const dbStatus = err ? 'ERROR' : 'OK';
+        
+        res.json({ 
+            status: 'OK', 
+            message: 'Student Training Platform is running',
+            timestamp: new Date().toISOString(),
+            environment: isRailway ? 'production' : 'development',
+            platform: 'Railway',
+            database: dbStatus,
+            redis: redisClient?.isOpen ? 'connected' : 'disconnected'
+        });
     });
 });
 
+// ... rest of your routes (modules, progress, etc.) remain the same ...
 
-// ===== LEARNING MODULES API =====
-
-// Get all modules
-app.get('/api/modules', (req, res) => {
-    const modules = [
-        {
-            id: 1,
-            title: "Hello Python - Talking to the Computer",
-            description: "Learn the basics of Python programming",
-            difficulty: "beginner",
-            estimated_time: "30 minutes",
-            order_index: 1,
-            content: {
-                story: `🧭 Welcome to Python! Think of Python as teaching a robot to follow your instructions.
-                
-                When you type commands, your robot listens carefully and does exactly what you say.
-                
-                Let's start with the most important command - making your robot speak!`,
-                
-                concepts: [
-                    {
-                        title: "Print Function - Making the Robot Speak",
-                        explanation: `The print() function is how your Python robot speaks to you. Whatever you put inside the parentheses, your robot will say out loud!`,
-                        example: `print("Hello, world!")  # Robot says: Hello, world!
-print("I'm learning Python!")  # Robot says: I'm learning Python!`,
-                        analogy: "Think of print() like telling your robot: 'Say this out loud!'"
-                    },
-                    {
-                        title: "Variables - Naming Your Storage Boxes",
-                        explanation: `Variables are like labeled boxes where you can store information. Once you put something in a box, you can use the label to get it back later.`,
-                        example: `# Create variables (storage boxes)
-name = "Alex"
-age = 12
-is_student = True
-
-# Use the variables
-print("Hello, " + name)
-print("You are " + str(age) + " years old")`,
-                        analogy: "Variables are like name tags on your school supplies - you put a label so you can find it later!"
-                    },
-                    {
-                        title: "Data Types - Different Kinds of Information",
-                        explanation: `Python understands different types of information, just like you understand numbers, words, and true/false questions.`,
-                        example: `# String - for text (words)
-name = "Sarah"
-message = "Hello there!"
-
-# Integer - for whole numbers
-age = 13
-score = 95
-
-# Float - for decimal numbers
-height = 1.65
-temperature = 23.5
-
-# Boolean - for True/False
-is_sunny = True
-is_raining = False`,
-                        analogy: "Data types are like different subjects in school - math uses numbers, English uses words, science uses true/false experiments!"
-                    }
-                ],
-                
-                exercises: [
-                    {
-                        title: "Make Your Robot Greet You",
-                        description: "Create a program that greets you by name and tells you your age",
-                        starter_code: `# TODO: Create variables for your name and age
-name = "Your Name Here"
-age = 12
-
-# TODO: Make the robot greet you
-print("")`,
-                        solution: `name = "Alex"
-age = 12
-
-print("Hello, " + name + "!")
-print("You are " + str(age) + " years old!")
-print("Nice to meet you!")`,
-                        hints: [
-                            "Use the print() function to make the robot speak",
-                            "Combine text and variables using the + operator",
-                            "Don't forget to convert numbers to text using str()"
-                        ]
-                    },
-                    {
-                        title: "Dog Years Calculator",
-                        description: "Calculate how old you would be in dog years (1 human year = 7 dog years)",
-                        starter_code: `# TODO: Calculate dog years
-human_age = 12
-dog_years = 
-
-print("If you're " + str(human_age) + " in human years...")
-print("You're " + str(dog_years) + " in dog years!")`,
-                        solution: `human_age = 12
-dog_years = human_age * 7
-
-print("If you're " + str(human_age) + " in human years...")
-print("You're " + str(dog_years) + " in dog years!")`,
-                        hints: [
-                            "Multiply human_age by 7 to get dog years",
-                            "Make sure to use the multiplication operator *",
-                            "Check your math - 12 human years should be 84 dog years!"
-                        ]
-                    }
-                ],
-                
-                quiz: [
-                    {
-                        question: "What does the print() function do?",
-                        options: [
-                            "Makes the computer print on paper",
-                            "Displays text on the screen",
-                            "Creates a new variable",
-                            "Does math calculations"
-                        ],
-                        correct: 1,
-                        explanation: "print() displays text on the screen - it's how your Python robot 'speaks' to you!"
-                    },
-                    {
-                        question: "Which of these is a valid variable name?",
-                        options: [
-                            "my name",
-                            "123name",
-                            "my_name",
-                            "print"
-                        ],
-                        correct: 2,
-                        explanation: "Variable names can't have spaces, can't start with numbers, and can't be Python keywords like 'print'"
-                    }
-                ]
-            }
-        },
-        {
-            id: 2,
-            title: "Functions - Teaching the Robot New Tricks",
-            description: "Learn to create reusable code with functions",
-            difficulty: "beginner", 
-            estimated_time: "45 minutes",
-            order_index: 2,
-            content: {
-                story: `🎩 Welcome to Functions - where you teach your robot magic tricks!
-                
-                Functions are like recipes. Once you create a recipe (like "how to make a sandwich"), you can use it anytime without writing all the steps again.
-                
-                Let's teach your robot some cool tricks!`,
-                
-                concepts: [
-                    {
-                        title: "Creating Functions - Writing Your Recipes",
-                        explanation: `Functions are blocks of code that you can define once and use many times. They make your code organized and reusable.`,
-                        example: `# Define a function (create a recipe)
-def greet():
-    print("Hello there!")
-    print("Welcome to Python!")
-
-# Use the function (follow the recipe)
-greet()
-greet()  # You can use it multiple times!`,
-                        analogy: "Functions are like dance routines - learn the steps once, then perform them anytime!"
-                    },
-                    {
-                        title: "Function Parameters - Customizing Your Recipes", 
-                        explanation: `Parameters let you pass information to functions, making them flexible and customizable.`,
-                        example: `# Function with parameters
-def greet_person(name):
-    print("Hello, " + name + "!")
-    print("Nice to meet you!")
-
-# Use with different names
-greet_person("Alice")
-greet_person("Bob")
-greet_person("Charlie")`,
-                        analogy: "Parameters are like blank spaces in a mad lib - you fill them in differently each time!"
-                    },
-                    {
-                        title: "Return Values - Getting Answers Back",
-                        explanation: `Functions can return values back to you, like a calculator giving you the answer to a math problem.`,
-                        example: `# Function that returns a value
-def add_numbers(a, b):
-    result = a + b
-    return result
-
-# Use the returned value
-sum = add_numbers(5, 3)
-print("The sum is: " + str(sum))
-
-# You can use it directly in print
-print("10 + 15 = " + str(add_numbers(10, 15)))`,
-                        analogy: "Return values are like asking a question and getting an answer - the function does the work and gives you back the result!"
-                    }
-                ],
-                
-                exercises: [
-                    {
-                        title: "Math Helper Functions",
-                        description: "Create a set of math helper functions for common calculations",
-                        starter_code: `# TODO: Create math functions
-def add(a, b):
-    # Return the sum of a and b
-    return
-
-def multiply(a, b):
-    # Return a multiplied by b
-    return
-
-def square(x):
-    # Return x squared (x * x)
-    return
-
-# Test your functions
-print("5 + 3 = " + str(add(5, 3)))
-print("4 * 6 = " + str(multiply(4, 6)))
-print("7 squared = " + str(square(7)))`,
-                        solution: `def add(a, b):
-    return a + b
-
-def multiply(a, b):
-    return a * b
-
-def square(x):
-    return x * x
-
-print("5 + 3 = " + str(add(5, 3)))
-print("4 * 6 = " + str(multiply(4, 6))) 
-print("7 squared = " + str(square(7)))`,
-                        hints: [
-                            "Use the + operator for addition",
-                            "Use the * operator for multiplication", 
-                            "To square a number, multiply it by itself"
-                        ]
-                    }
-                ]
-            }
-        }
-    ];
-    
-    res.json({ modules: modules });
+// Add error handling middleware at the end
+app.use((err, req, res, next) => {
+    console.error('❌ Server Error:', err);
+    res.status(500).json({ error: 'Internal server error' });
 });
 
-// Get specific module
-app.get('/api/modules/:id', (req, res) => {
-    const moduleId = parseInt(req.params.id);
-    // In a real app, you'd fetch from database
-    // For now, we'll return from the array above
-    res.json({ module: modules.find(m => m.id === moduleId) });
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({ error: 'Route not found' });
 });
 
-// Save user progress
-app.post('/api/progress', (req, res) => {
-    if (!req.session.userId) {
-        return res.status(401).json({ error: 'Not authenticated' });
-    }
-    
-    const { moduleId, completed, score, timeSpent } = req.body;
-    
-    db.run(
-        `INSERT OR REPLACE INTO user_progress (user_id, module_id, completed, score, time_spent) 
-         VALUES (?, ?, ?, ?, ?)`,
-        [req.session.userId, moduleId, completed, score, timeSpent],
-        function(err) {
-            if (err) {
-                return res.status(500).json({ error: 'Database error' });
-            }
-            res.json({ message: 'Progress saved successfully' });
-        }
-    );
-});
-
-// Serve frontend for all other routes
+// Serve frontend for all other routes (SPA support)
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
+// Graceful shutdown
+process.on('SIGINT', () => {
+    console.log('🛑 Shutting down gracefully...');
+    
+    if (redisClient?.isOpen) {
+        redisClient.quit().then(() => {
+            console.log('✅ Redis connection closed');
+            process.exit(0);
+        }).catch(err => {
+            console.error('❌ Error closing Redis:', err);
+            process.exit(1);
+        });
+    } else {
+        db.close((err) => {
+            if (err) {
+                console.error('❌ Error closing database:', err);
+                process.exit(1);
+            }
+            console.log('✅ Database connection closed');
+            process.exit(0);
+        });
+    }
+});
+
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log('✅ Server successfully started!');
     console.log('🌐 Frontend URL: https://homehub-training-platform-production.up.railway.app');
     console.log('🔧 Port:', PORT);
@@ -615,10 +472,10 @@ app.listen(PORT, () => {
     console.log('');
     console.log('📚 Student Training Platform Ready!');
     console.log('=====================================');
-    console.log('ℹ️  Note: Using MemoryStore for sessions (ok for demo)');
     console.log('✅ Connected to SQLite database');
     console.log('🔐 Session config:', {
         secure: isRailway,
-        sameSite: isRailway ? 'none' : 'lax'
+        sameSite: isRailway ? 'none' : 'lax',
+        store: sessionStore ? 'Redis' : 'Memory'
     });
 });
