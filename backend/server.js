@@ -106,7 +106,7 @@ setupSessionStore().catch(console.error);
 
 const sessionConfig = {
     store: sessionStore,
-    secret: process.env.SESSION_SECRET || 'student-platform-secret-key-change-in-production',
+    secret: process.env.SESSION_SECRET || 'student-platform-secret-key-change-this',
     resave: false,
     saveUninitialized: false,
     rolling: true, // Reset maxAge on every request

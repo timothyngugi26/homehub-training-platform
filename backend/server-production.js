@@ -33,7 +33,7 @@ app.use(cors({
         const allowedOrigins = [
             frontendUrl,
             'http://localhost:3000',
-            'https://localhost:3000'
+            'https://homehub-training-platform-production.up.railway.app'
         ];
         
         if (allowedOrigins.indexOf(origin) !== -1 || origin.includes('railway.app')) {
