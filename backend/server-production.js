@@ -50,7 +50,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Session configuration for production (using default MemoryStore with warning suppressed)
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'fallback-secret-key-for-development',
+    secret: process.env.SESSION_SECRET || 'your-production-secret-key-change-this',
     resave: false,
     saveUninitialized: false,
     cookie: { 
