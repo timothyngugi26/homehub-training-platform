@@ -29,7 +29,7 @@ if (!fs.existsSync('./database')) {
 // ===== FIXED CORS CONFIGURATION =====
 const corsOptions = {
     origin: isRailway 
-        ? ['https://homehub-training-platform-production.up.railway.app', 'http://localhost:3000']
+        ? ['https://homehub-training-platform-production.up.railway.app', 'https://homehub-training-platform.railway.app', 'http://localhost:3000']
         : 'http://localhost:3000',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -117,7 +117,8 @@ const sessionConfig = {
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
         sameSite: isRailway ? 'none' : 'lax',
-        domain: isRailway ? '.railway.app' : undefined
+        domain: isRailway ? 'railway.app' : undefined
+        path: '/'
     }
 };
 
@@ -142,12 +143,12 @@ app.use((req, res, next) => {
 });
 
 // Add request timeout middleware
-app.use((req, res, next) => {
-    req.setTimeout(30000, () => { // 30 second timeout
-        console.log(`⏰ Request timeout: ${req.method} ${req.url}`);
-    });
-    next();
-});
+// app.use((req, res, next) => {
+//req.setTimeout(30000, () => { // 30 second timeout
+        //console.log(`⏰ Request timeout: ${req.method} ${req.url}`);
+    //});
+    //next();
+//});
 
 // Serve static files from frontend
 app.use(express.static(path.join(__dirname, '../frontend'), {
